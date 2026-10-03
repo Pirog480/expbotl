@@ -85,6 +85,12 @@ jobs:
             done
             echo "########## XP sync packet senders ##########"
             grep -rn "ExperienceBarUpdateS2CPacket" net/minecraft/server --include="*.java" 2>/dev/null | head -n 8
+            echo "########## ServerPlayerInteractionManager.interactItem ##########"
+            dump_method net/minecraft/server/network/ServerPlayerInteractionManager.java "public ActionResult interactItem("
+            echo "########## ServerPlayerEntity XP packet context (lines 695-725) ##########"
+            sed -n '695,725p' net/minecraft/server/network/ServerPlayerEntity.java 2>/dev/null
+            echo "########## ScreenHandler.sendContentUpdates ##########"
+            dump_method net/minecraft/screen/ScreenHandler.java "public void sendContentUpdates("
             echo "########## ClientPlayerInteractionManager use flow ##########"
             grep -n "itemStack.use" net/minecraft/client/network/ClientPlayerInteractionManager.java 2>/dev/null | head -n 5
             sed -n '370,440p' net/minecraft/client/network/ClientPlayerInteractionManager.java 2>/dev/null
