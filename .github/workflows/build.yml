@@ -98,6 +98,13 @@ jobs:
 
       - name: Smoke test (boot dev server with the mod)
         run: |
+          # 1) The shipped jar must be remapped to intermediary names (production-ready).
+          main_jar="$(find build/libs -maxdepth 1 -name "*.jar" ! -name "*-sources.jar" | head -n 1)"
+          echo "checking remap of $main_jar"
+          unzip -p "$main_jar" com/pirog480/expbotl/mixin/ItemStackMixin.class | strings | grep -q "method_7913" \
+            || { echo "JAR NOT REMAPPED (missing intermediary method_7913)"; exit 1; }
+
+          # 2) Boot a dev server with the mod installed.
           mkdir -p run
           echo "eula=true" > run/eula.txt
           ./gradlew runServer > /tmp/server.log 2>&1 &
