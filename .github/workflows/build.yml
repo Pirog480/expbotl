@@ -1,0 +1,133 @@
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: gradle
+
+      - name: Build mod
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build --stacktrace
+
+      # Research step: dump the decompiled Minecraft sources that the mixin targets,
+      # so the exact vanilla flow can be verified from the run logs.
+      - name: Dump decompiled Minecraft sources
+        if: always()
+        continue-on-error: true
+        run: |
+          ./gradlew genSources --stacktrace 2>&1 | tail -n 5 || true
+          SRC_JARS="$(find "$HOME/.gradle" -name "*sources*.jar" -path "*loom*" 2>/dev/null | head -n 5)"
+          echo "=== sources jars: $SRC_JARS ==="
+          mkdir -p /tmp/mc && cd /tmp/mc
+          for j in $SRC_JARS; do unzip -o -q "$j" 2>/dev/null || true; done
+
+          dump_method() {
+            local file="$1" regex="$2" line
+            if [ -f "$file" ]; then
+              line=$(grep -n "$regex" "$file" | head -n 1 | cut -d: -f1)
+              if [ -n "$line" ]; then
+                echo "----- $file :: $regex (line $line) -----"
+                sed -n "${line},$((line + 55))p" "$file"
+              else
+                echo "----- $file :: $regex NOT FOUND -----"
+              fi
+            else
+              echo "----- $file MISSING -----"
+            fi
+          }
+
+          echo "########## ExperienceBottleItem.java (full) ##########"
+          cat net/minecraft/item/ExperienceBottleItem.java 2>/dev/null || echo MISSING
+          echo "########## ProjectileItem.java (full) ##########"
+          cat net/minecraft/item/ProjectileItem.java 2>/dev/null || echo MISSING
+          echo "########## ExperienceBottleEntity.java (full) ##########"
+          cat net/minecraft/entity/projectile/thrown/ExperienceBottleEntity.java 2>/dev/null || echo MISSING
+          echo "########## ActionResult.java (full) ##########"
+          cat net/minecraft/util/ActionResult.java 2>/dev/null || echo MISSING
+
+          echo "########## ItemStack.use ##########"
+          dump_method net/minecraft/item/ItemStack.java "public ActionResult use\("
+          echo "########## ItemStack.decrementUnlessCreative ##########"
+          dump_method net/minecraft/item/ItemStack.java "public void decrementUnlessCreative\("
+          echo "########## Item.use ##########"
+          dump_method net/minecraft/item/Item.java "public ActionResult use\("
+          echo "########## Item.java ProjectileItem references ##########"
+          grep -n "ProjectileItem" net/minecraft/item/Item.java 2>/dev/null | head -n 5
+          echo "########## ServerPlayerInteractionManager.useItem ##########"
+          dump_method net/minecraft/server/network/ServerPlayerInteractionManager.java "public ActionResult useItem\("
+          echo "########## ClientPlayerInteractionManager use flow ##########"
+          grep -n "useItem\|\.use(" net/minecraft/client/network/ClientPlayerInteractionManager.java 2>/dev/null | head -n 15
+          dump_method net/minecraft/client/network/ClientPlayerInteractionManager.java "public ActionResult useItem\("
+          echo "########## PlayerEntity.addExperience ##########"
+          dump_method net/minecraft/entity/player/PlayerEntity.java "public void addExperience\("
+          echo "########## ExperienceOrbEntity.spawn / nextInt ##########"
+          dump_method net/minecraft/entity/ExperienceOrbEntity.java "public static void spawn\("
+          grep -n "nextInt" net/minecraft/entity/ExperienceOrbEntity.java 2>/dev/null | head -n 5
+          echo "########## who handles ProjectileItem ##########"
+          grep -rn "instanceof ProjectileItem" net/minecraft --include="*.java" 2>/dev/null | head -n 5
+          grep -rln "getProjectileSettings" net/minecraft --include="*.java" 2>/dev/null | head -n 5
+          echo "########## SoundEvents EXPERIENCE fields ##########"
+          grep -n "EXPERIENCE" net/minecraft/sound/SoundEvents.java 2>/dev/null | head -n 10
+          echo "########## Items.EXPERIENCE_BOTTLE ##########"
+          grep -n "EXPERIENCE_BOTTLE" net/minecraft/item/Items.java 2>/dev/null | head -n 3
+          echo "########## ParticleTypes experience/enchant fields ##########"
+          grep -n "EXPERIENCE\|ENCHANT" net/minecraft/particle/ParticleTypes.java 2>/dev/null | head -n 10
+
+      - name: Smoke test (boot dev server with the mod)
+        run: |
+          mkdir -p run
+          echo "eula=true" > run/eula.txt
+          ./gradlew runServer > /tmp/server.log 2>&1 &
+          GRADLE_PID=$!
+          booted=0
+          for i in $(seq 1 120); do
+            sleep 4
+            if grep -q "Done (" /tmp/server.log 2>/dev/null; then booted=1; break; fi
+            if ! kill -0 "$GRADLE_PID" 2>/dev/null; then break; fi
+          done
+          if [ "$booted" = "1" ]; then
+            echo "=== SMOKE TEST OK: dev server booted (mixin applied cleanly) ==="
+          else
+            echo "=== SMOKE TEST FAILED: server did not reach Done ==="
+          fi
+          pkill -TERM -f "devlaunchinjector" 2>/dev/null || true
+          kill -TERM "$GRADLE_PID" 2>/dev/null || true
+          sleep 8
+          kill -9 "$GRADLE_PID" 2>/dev/null || true
+          echo "=== server log tail ==="
+          tail -n 50 /tmp/server.log
+          echo "=== assertions ==="
+          grep -q "Done (" /tmp/server.log
+          grep -q "ExpBotl" /tmp/server.log
+          ! grep -qE "MixinApplyError|InjectionError|Critical injection|InvalidMixinException" /tmp/server.log
+
+      - name: Commit built jar
+        run: |
+          main_jar="$(find build/libs -maxdepth 1 -name "*.jar" ! -name "*-sources.jar" | head -n 1)"
+          if [ -z "$main_jar" ]; then echo "no jar found"; exit 1; fi
+          cp "$main_jar" .
+          echo "committing $(basename "$main_jar")"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$(basename "$main_jar")"
+          git commit -m "Build: add mod jar [skip ci]" || echo "no changes to commit"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

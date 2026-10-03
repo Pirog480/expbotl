@@ -1,0 +1,28 @@
+{
+	"schemaVersion": 1,
+	"id": "expbotl",
+	"version": "${version}",
+	"name": "ExpBotl",
+	"description": "Sneak + right-click a bottle o' enchanting to instantly consume the whole stack and receive all of its experience. / Зажмите Shift и нажмите ПКМ с бутылочкой опыта, чтобы мгновенно использовать весь стак и получить весь опыт.",
+	"authors": [
+		"Pirog480"
+	],
+	"contact": {
+		"sources": "https://github.com/Pirog480/expbotl"
+	},
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.pirog480.expbotl.Expbotl"
+		]
+	},
+	"mixins": [
+		"expbotl.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.16.9",
+		"minecraft": "~1.21.11",
+		"java": ">=21"
+	}
+}
