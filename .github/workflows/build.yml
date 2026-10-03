@@ -43,14 +43,14 @@ jobs:
             for j in $SRC_JARS; do unzip -o -q "$j" 2>/dev/null || true; done
 
             dump_method() {
-              local file="$1" regex="$2" line
+              local file="$1" needle="$2" line
               if [ -f "$file" ]; then
-                line=$(grep -n "$regex" "$file" | head -n 1 | cut -d: -f1)
+                line=$(grep -nF "$needle" "$file" | head -n 1 | cut -d: -f1)
                 if [ -n "$line" ]; then
-                  echo "----- $file :: $regex (line $line) -----"
+                  echo "----- $file :: $needle (line $line) -----"
                   sed -n "${line},$((line + 55))p" "$file"
                 else
-                  echo "----- $file :: $regex NOT FOUND -----"
+                  echo "----- $file :: $needle NOT FOUND -----"
                 fi
               else
                 echo "----- $file MISSING -----"
@@ -67,22 +67,25 @@ jobs:
             cat net/minecraft/util/ActionResult.java 2>/dev/null || echo MISSING
 
             echo "########## ItemStack.use ##########"
-            dump_method net/minecraft/item/ItemStack.java "public ActionResult use\("
+            dump_method net/minecraft/item/ItemStack.java "public ActionResult use("
             echo "########## ItemStack.decrementUnlessCreative ##########"
-            dump_method net/minecraft/item/ItemStack.java "public void decrementUnlessCreative\("
+            dump_method net/minecraft/item/ItemStack.java "public void decrementUnlessCreative("
             echo "########## Item.use ##########"
-            dump_method net/minecraft/item/Item.java "public ActionResult use\("
+            dump_method net/minecraft/item/Item.java "public ActionResult use("
             echo "########## Item.java ProjectileItem references ##########"
             grep -n "ProjectileItem" net/minecraft/item/Item.java 2>/dev/null | head -n 5
             echo "########## ServerPlayerInteractionManager.useItem ##########"
-            dump_method net/minecraft/server/network/ServerPlayerInteractionManager.java "public ActionResult useItem\("
+            dump_method net/minecraft/server/network/ServerPlayerInteractionManager.java "public ActionResult useItem("
+            echo "########## ServerPlayNetworkHandler use-item packet flow ##########"
+            grep -n "useItem" net/minecraft/server/network/ServerPlayNetworkHandler.java 2>/dev/null | head -n 5
+            dump_method net/minecraft/server/network/ServerPlayNetworkHandler.java "public void onPlayerInteractItem("
             echo "########## ClientPlayerInteractionManager use flow ##########"
-            grep -n "useItem\|\.use(" net/minecraft/client/network/ClientPlayerInteractionManager.java 2>/dev/null | head -n 15
-            dump_method net/minecraft/client/network/ClientPlayerInteractionManager.java "public ActionResult useItem\("
+            grep -n "itemStack.use" net/minecraft/client/network/ClientPlayerInteractionManager.java 2>/dev/null | head -n 5
+            sed -n '370,440p' net/minecraft/client/network/ClientPlayerInteractionManager.java 2>/dev/null
             echo "########## PlayerEntity.addExperience ##########"
-            dump_method net/minecraft/entity/player/PlayerEntity.java "public void addExperience\("
+            dump_method net/minecraft/entity/player/PlayerEntity.java "public void addExperience("
             echo "########## ExperienceOrbEntity.spawn / nextInt ##########"
-            dump_method net/minecraft/entity/ExperienceOrbEntity.java "public static void spawn\("
+            dump_method net/minecraft/entity/ExperienceOrbEntity.java "public static void spawn("
             grep -n "nextInt" net/minecraft/entity/ExperienceOrbEntity.java 2>/dev/null | head -n 5
             echo "########## who handles ProjectileItem ##########"
             grep -rn "instanceof ProjectileItem" net/minecraft --include="*.java" 2>/dev/null | head -n 5
@@ -93,6 +96,10 @@ jobs:
             grep -n "EXPERIENCE_BOTTLE" net/minecraft/item/Items.java 2>/dev/null | head -n 3
             echo "########## ParticleTypes experience/enchant fields ##########"
             grep -n "EXPERIENCE\|ENCHANT" net/minecraft/particle/ParticleTypes.java 2>/dev/null | head -n 10
+            echo "########## WorldEvents SPLASH ##########"
+            grep -n "SPLASH_POTION_SPLASHED" net/minecraft/world/WorldEvents.java 2>/dev/null | head -n 3
+            echo "########## Stats.USED ##########"
+            grep -n "public static final" net/minecraft/stat/Stats.java 2>/dev/null | head -n 25
           } > /tmp/research-dump.txt 2>&1
           wc -l /tmp/research-dump.txt
 
