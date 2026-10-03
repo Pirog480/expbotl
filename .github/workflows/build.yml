@@ -140,16 +140,18 @@ jobs:
         run: |
           if [ ! -f /tmp/research-dump.txt ]; then echo "no dump" > /tmp/research-dump.txt; fi
           if [ ! -f /tmp/server.log ]; then echo "no server log" > /tmp/server.log; fi
-          git clone --no-checkout . /tmp/dumprepo
-          cd /tmp/dumprepo
-          git checkout --orphan ci-research
-          git rm -rf --cached . 2>/dev/null || true
           cp /tmp/research-dump.txt .
           cp /tmp/server.log research-server.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add research-dump.txt research-server.log
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -m "Research dump from run ${GITHUB_RUN_ID}"
-          git push -f origin HEAD:refs/heads/ci/research
+          if git diff --cached --quiet; then
+            echo "nothing to publish"
+            exit 0
+          fi
+          git commit -m "Research dump from run ${GITHUB_RUN_ID}"
+          git push -f origin "HEAD:refs/heads/ci/research"
+          git reset --hard "HEAD~1"
 
       - name: Commit built jar
         run: |
