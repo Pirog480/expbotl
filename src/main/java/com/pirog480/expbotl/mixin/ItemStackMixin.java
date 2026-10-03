@@ -71,10 +71,8 @@ public abstract class ItemStackMixin {
 						user.getX(), user.getBodyY(0.5D), user.getZ(),
 						Math.min(24, 4 + bottles / 8), 0.4D, 0.5D, 0.4D, 0.05D);
 			}
-
-			// Make sure every client (also vanilla ones, when only the server runs the mod)
-			// sees the emptied hand slot immediately.
-			user.currentScreenHandler.sendContentUpdates();
+			// Note: no manual slot sync needed - the vanilla interaction manager sees the
+			// changed stack (and the non-null new hand stack) and syncs the client itself.
 		}
 
 		// Same result the vanilla bottle throw produces (ItemStack.use wraps the item's

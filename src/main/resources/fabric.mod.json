@@ -11,6 +11,7 @@
 		"sources": "https://github.com/Pirog480/expbotl"
 	},
 	"license": "MIT",
+	"icon": "assets/expbotl/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
