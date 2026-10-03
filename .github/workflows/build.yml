@@ -1,0 +1,76 @@
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: gradle
+
+      - name: Build mod
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build --stacktrace
+
+      - name: Smoke test (boot dev server with the mod)
+        run: |
+          # 1) The shipped jar must be remapped to intermediary names (production-ready).
+          main_jar="$(find build/libs -maxdepth 1 -name "*.jar" ! -name "*-sources.jar" | head -n 1)"
+          echo "checking remap of $main_jar"
+          unzip -p "$main_jar" com/pirog480/expbotl/mixin/ItemStackMixin.class | strings | grep -q "method_7913" \
+            || { echo "JAR NOT REMAPPED (missing intermediary method_7913)"; exit 1; }
+
+          # 2) Boot a dev server with the mod installed: proves the mixin applies cleanly.
+          mkdir -p run
+          echo "eula=true" > run/eula.txt
+          ./gradlew runServer > /tmp/server.log 2>&1 &
+          GRADLE_PID=$!
+          booted=0
+          for i in $(seq 1 120); do
+            sleep 4
+            if grep -q "Done (" /tmp/server.log 2>/dev/null; then booted=1; break; fi
+            if ! kill -0 "$GRADLE_PID" 2>/dev/null; then break; fi
+          done
+          if [ "$booted" = "1" ]; then
+            echo "=== SMOKE TEST OK: dev server booted (mixin applied cleanly) ==="
+          else
+            echo "=== SMOKE TEST FAILED: server did not reach Done ==="
+          fi
+          pkill -TERM -f "devlaunchinjector" 2>/dev/null || true
+          kill -TERM "$GRADLE_PID" 2>/dev/null || true
+          sleep 8
+          kill -9 "$GRADLE_PID" 2>/dev/null || true
+          echo "=== server log tail ==="
+          tail -n 50 /tmp/server.log
+          echo "=== assertions ==="
+          grep -q "Done (" /tmp/server.log
+          grep -q "mixin applied cleanly" /tmp/server.log
+          ! grep -qE "MixinApplyError|InjectionError|Critical injection|InvalidMixinException|FAILED to load ItemStack" /tmp/server.log
+
+      - name: Commit built jar
+        run: |
+          main_jar="$(find build/libs -maxdepth 1 -name "*.jar" ! -name "*-sources.jar" | head -n 1)"
+          if [ -z "$main_jar" ]; then echo "no jar found"; exit 1; fi
+          cp "$main_jar" .
+          echo "committing $(basename "$main_jar")"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$(basename "$main_jar")"
+          git commit -m "Build: add mod jar [skip ci]" || echo "no changes to commit"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
