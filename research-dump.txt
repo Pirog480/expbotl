@@ -1,0 +1,975 @@
+> Task :genSources
+
+BUILD SUCCESSFUL in 9s
+1 actionable task: 1 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.7.1/userguide/configuration_cache_enabling.html
+=== sources jars: /home/runner/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-merged/1.21.11-net.fabricmc.yarn.1_21_11.1.21.11+build.6-v2/minecraft-merged-1.21.11-net.fabricmc.yarn.1_21_11.1.21.11+build.6-v2-sources.jar ===
+########## ExperienceBottleItem.java (full) ##########
+package net.minecraft.item;
+
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.projectile.ProjectileEntity;
+import net.minecraft.entity.projectile.thrown.ExperienceBottleEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
+import net.minecraft.stat.Stats;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.Position;
+import net.minecraft.world.World;
+
+public class ExperienceBottleItem extends Item implements ProjectileItem {
+	public ExperienceBottleItem(Item.Settings settings) {
+		super(settings);
+	}
+
+	@Override
+	public ActionResult use(World world, PlayerEntity user, Hand hand) {
+		ItemStack itemStack = user.getStackInHand(hand);
+		world.playSound(
+			null,
+			user.getX(),
+			user.getY(),
+			user.getZ(),
+			SoundEvents.ENTITY_EXPERIENCE_BOTTLE_THROW,
+			SoundCategory.NEUTRAL,
+			0.5F,
+			0.4F / (world.getRandom().nextFloat() * 0.4F + 0.8F)
+		);
+		if (world instanceof ServerWorld serverWorld) {
+			ProjectileEntity.spawnWithVelocity(ExperienceBottleEntity::new, serverWorld, itemStack, user, -20.0F, 0.7F, 1.0F);
+		}
+
+		user.incrementStat(Stats.USED.getOrCreateStat(this));
+		itemStack.decrementUnlessCreative(1, user);
+		return ActionResult.SUCCESS;
+	}
+
+	@Override
+	public ProjectileEntity createEntity(World world, Position pos, ItemStack stack, Direction direction) {
+		return new ExperienceBottleEntity(world, pos.getX(), pos.getY(), pos.getZ(), stack);
+	}
+
+	@Override
+	public ProjectileItem.Settings getProjectileSettings() {
+		return ProjectileItem.Settings.builder()
+			.uncertainty(ProjectileItem.Settings.DEFAULT.uncertainty() * 0.5F)
+			.power(ProjectileItem.Settings.DEFAULT.power() * 1.25F)
+			.build();
+	}
+}
+########## ProjectileItem.java (full) ##########
+package net.minecraft.item;
+
+import java.util.OptionalInt;
+import net.minecraft.block.DispenserBlock;
+import net.minecraft.entity.projectile.ProjectileEntity;
+import net.minecraft.util.math.BlockPointer;
+import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.Position;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.World;
+
+public interface ProjectileItem {
+	ProjectileEntity createEntity(World world, Position pos, ItemStack stack, Direction direction);
+
+	default ProjectileItem.Settings getProjectileSettings() {
+		return ProjectileItem.Settings.DEFAULT;
+	}
+
+	default void initializeProjectile(ProjectileEntity entity, double x, double y, double z, float power, float uncertainty) {
+		entity.setVelocity(x, y, z, power, uncertainty);
+	}
+
+	@FunctionalInterface
+	interface PositionFunction {
+		Position getDispensePosition(BlockPointer pointer, Direction facing);
+	}
+
+	record Settings(ProjectileItem.PositionFunction positionFunction, float uncertainty, float power, OptionalInt overrideDispenseEvent) {
+		public static final ProjectileItem.Settings DEFAULT = builder().build();
+
+		public static ProjectileItem.Settings.Builder builder() {
+			return new ProjectileItem.Settings.Builder();
+		}
+
+		public static class Builder {
+			private ProjectileItem.PositionFunction positionFunction = (pointer, direction) -> DispenserBlock.getOutputLocation(pointer, 0.7, new Vec3d(0.0, 0.1, 0.0));
+			private float uncertainty = 6.0F;
+			private float power = 1.1F;
+			private OptionalInt overrideDispenserEvent = OptionalInt.empty();
+
+			public ProjectileItem.Settings.Builder positionFunction(ProjectileItem.PositionFunction positionFunction) {
+				this.positionFunction = positionFunction;
+				return this;
+			}
+
+			public ProjectileItem.Settings.Builder uncertainty(float uncertainty) {
+				this.uncertainty = uncertainty;
+				return this;
+			}
+
+			public ProjectileItem.Settings.Builder power(float power) {
+				this.power = power;
+				return this;
+			}
+
+			public ProjectileItem.Settings.Builder overrideDispenseEvent(int overrideDispenseEvent) {
+				this.overrideDispenserEvent = OptionalInt.of(overrideDispenseEvent);
+				return this;
+			}
+
+			public ProjectileItem.Settings build() {
+				return new ProjectileItem.Settings(this.positionFunction, this.uncertainty, this.power, this.overrideDispenserEvent);
+			}
+		}
+	}
+}
+########## ExperienceBottleEntity.java (full) ##########
+package net.minecraft.entity.projectile.thrown;
+
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.ExperienceOrbEntity;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.World;
+import net.minecraft.world.WorldEvents;
+
+public class ExperienceBottleEntity extends ThrownItemEntity {
+	public ExperienceBottleEntity(EntityType<? extends ExperienceBottleEntity> entityType, World world) {
+		super(entityType, world);
+	}
+
+	public ExperienceBottleEntity(World world, LivingEntity owner, ItemStack stack) {
+		super(EntityType.EXPERIENCE_BOTTLE, owner, world, stack);
+	}
+
+	public ExperienceBottleEntity(World world, double x, double y, double z, ItemStack stack) {
+		super(EntityType.EXPERIENCE_BOTTLE, x, y, z, world, stack);
+	}
+
+	@Override
+	protected Item getDefaultItem() {
+		return Items.EXPERIENCE_BOTTLE;
+	}
+
+	@Override
+	protected double getGravity() {
+		return 0.07;
+	}
+
+	@Override
+	protected void onCollision(HitResult hitResult) {
+		super.onCollision(hitResult);
+		if (this.getEntityWorld() instanceof ServerWorld serverWorld) {
+			serverWorld.syncWorldEvent(WorldEvents.SPLASH_POTION_SPLASHED, this.getBlockPos(), -13083194);
+			int i = 3 + serverWorld.random.nextInt(5) + serverWorld.random.nextInt(5);
+			if (hitResult instanceof BlockHitResult blockHitResult) {
+				Vec3d vec3d = blockHitResult.getSide().getDoubleVector();
+				ExperienceOrbEntity.spawn(serverWorld, hitResult.getPos(), vec3d, i);
+			} else {
+				ExperienceOrbEntity.spawn(serverWorld, hitResult.getPos(), this.getVelocity().multiply(-1.0), i);
+			}
+
+			this.discard();
+		}
+	}
+}
+########## ActionResult.java (full) ##########
+package net.minecraft.util;
+
+import net.minecraft.item.ItemStack;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * An enum indicating the hand interaction's result. Methods called on hand interaction,
+ * such as {@link net.minecraft.block.AbstractBlock#onUse}, return this.
+ */
+public sealed interface ActionResult permits ActionResult.Success, ActionResult.Fail, ActionResult.Pass, ActionResult.PassToDefaultBlockAction {
+	/**
+	 * Indicates an action is performed and the actor's hand should swing to
+	 * indicate the performance.
+	 */
+	ActionResult.Success SUCCESS = new ActionResult.Success(ActionResult.SwingSource.CLIENT, ActionResult.ItemContext.KEEP_HAND_STACK);
+	/**
+	 * Indicates an action is performed on the logical server only and the
+	 * actor's hand should swing to indicate the performance.
+	 */
+	ActionResult.Success SUCCESS_SERVER = new ActionResult.Success(ActionResult.SwingSource.SERVER, ActionResult.ItemContext.KEEP_HAND_STACK);
+	/**
+	 * Indicates an action is performed but no animation should accompany the
+	 * performance.
+	 */
+	ActionResult.Success CONSUME = new ActionResult.Success(ActionResult.SwingSource.NONE, ActionResult.ItemContext.KEEP_HAND_STACK);
+	/**
+	 * Indicates that an action is not performed and prevents other actions
+	 * from performing.
+	 */
+	ActionResult.Fail FAIL = new ActionResult.Fail();
+	/**
+	 * Indicates an action is not performed but allows other actions to
+	 * perform.
+	 */
+	ActionResult.Pass PASS = new ActionResult.Pass();
+	/**
+	 * Indicates an action is not performed and the default block action
+	 * should be performed instead.
+	 */
+	ActionResult.PassToDefaultBlockAction PASS_TO_DEFAULT_BLOCK_ACTION = new ActionResult.PassToDefaultBlockAction();
+
+	/**
+	 * {@return whether an action is performed}
+	 */
+	default boolean isAccepted() {
+		return false;
+	}
+
+	record Fail() implements ActionResult {
+	}
+
+	/**
+	 * @param newHandStack the item stack that should replace the hand stack after an interaction, if any
+	 */
+	record ItemContext(boolean incrementStat, @Nullable ItemStack newHandStack) {
+		static ActionResult.ItemContext KEEP_HAND_STACK_NO_INCREMENT_STAT = new ActionResult.ItemContext(false, null);
+		static ActionResult.ItemContext KEEP_HAND_STACK = new ActionResult.ItemContext(true, null);
+	}
+
+	record Pass() implements ActionResult {
+	}
+
+	record PassToDefaultBlockAction() implements ActionResult {
+	}
+
+	record Success(ActionResult.SwingSource swingSource, ActionResult.ItemContext itemContext) implements ActionResult {
+		@Override
+		public boolean isAccepted() {
+			return true;
+		}
+
+		public ActionResult.Success withNewHandStack(ItemStack newHandStack) {
+			return new ActionResult.Success(this.swingSource, new ActionResult.ItemContext(true, newHandStack));
+		}
+
+		public ActionResult.Success noIncrementStat() {
+			return new ActionResult.Success(this.swingSource, ActionResult.ItemContext.KEEP_HAND_STACK_NO_INCREMENT_STAT);
+		}
+
+		public boolean shouldIncrementStat() {
+			return this.itemContext.incrementStat;
+		}
+
+		/**
+		 * {@return the item stack that should replace the hand stack after this interaction, if any}
+		 */
+		public @Nullable ItemStack getNewHandStack() {
+			return this.itemContext.newHandStack;
+		}
+	}
+
+	/**
+	 * Represents the side that should be considered the source of truth
+	 * for an arm swing, if any.
+	 */
+	enum SwingSource {
+		NONE,
+		CLIENT,
+		SERVER;
+	}
+}
+########## ItemStack.use ##########
+----- net/minecraft/item/ItemStack.java :: public ActionResult use( (line 488) -----
+	public ActionResult use(World world, PlayerEntity user, Hand hand) {
+		ItemStack itemStack = this.copy();
+		boolean bl = this.getMaxUseTime(user) <= 0;
+		ActionResult actionResult = this.getItem().use(world, user, hand);
+		return bl && actionResult instanceof ActionResult.Success success
+			? success.withNewHandStack(
+				success.getNewHandStack() == null ? this.applyRemainderAndCooldown(user, itemStack) : success.getNewHandStack().applyRemainderAndCooldown(user, itemStack)
+			)
+			: actionResult;
+	}
+
+	public ItemStack finishUsing(World world, LivingEntity user) {
+		ItemStack itemStack = this.copy();
+		ItemStack itemStack2 = this.getItem().finishUsing(this, world, user);
+		return itemStack2.applyRemainderAndCooldown(user, itemStack);
+	}
+
+	private ItemStack applyRemainderAndCooldown(LivingEntity user, ItemStack stack) {
+		UseRemainderComponent useRemainderComponent = stack.get(DataComponentTypes.USE_REMAINDER);
+		UseCooldownComponent useCooldownComponent = stack.get(DataComponentTypes.USE_COOLDOWN);
+		int i = stack.getCount();
+		ItemStack itemStack = this;
+		if (useRemainderComponent != null) {
+			itemStack = useRemainderComponent.convert(itemStack, i, user.isInCreativeMode(), user::giveOrDropStack);
+		}
+
+		if (useCooldownComponent != null) {
+			useCooldownComponent.set(stack, user);
+		}
+
+		return itemStack;
+	}
+
+	public int getMaxCount() {
+		return this.getOrDefault(DataComponentTypes.MAX_STACK_SIZE, 1);
+	}
+
+	/**
+	 * {@return whether the item stack can have item count above {@code 1}}
+	 * 
+	 * <p>Stackable items must have {@linkplain Item#getMaxCount the maximum count} that is more
+	 * than {@code 1} and cannot be damaged.
+	 */
+	public boolean isStackable() {
+		return this.getMaxCount() > 1 && (!this.isDamageable() || !this.isDamaged());
+	}
+
+	/**
+	 * {@return whether the item can be damaged (lose durability)}
+	 * 
+	 * <p>Items with {@linkplain #getMaxDamage 0 max damage} or item stacks with {@link
+	 * net.minecraft.component.DataComponentTypes#UNBREAKABLE} component cannot be damaged.
+	 * 
+	 * @see #getMaxDamage
+	 * @see #isDamaged
+	 * @see #getDamage
+########## ItemStack.decrementUnlessCreative ##########
+----- net/minecraft/item/ItemStack.java :: public void decrementUnlessCreative( (line 1484) -----
+	public void decrementUnlessCreative(int amount, @Nullable LivingEntity entity) {
+		if (entity == null || !entity.isInCreativeMode()) {
+			this.decrement(amount);
+		}
+	}
+
+	public ItemStack splitUnlessCreative(int amount, @Nullable LivingEntity entity) {
+		ItemStack itemStack = this.copyWithCount(amount);
+		this.decrementUnlessCreative(amount, entity);
+		return itemStack;
+	}
+
+	public void usageTick(World world, LivingEntity user, int remainingUseTicks) {
+		ConsumableComponent consumableComponent = this.get(DataComponentTypes.CONSUMABLE);
+		if (consumableComponent != null && consumableComponent.shouldSpawnParticlesAndPlaySounds(remainingUseTicks)) {
+			consumableComponent.spawnParticlesAndPlaySound(user.getRandom(), user, this, 5);
+		}
+
+		KineticWeaponComponent kineticWeaponComponent = this.get(DataComponentTypes.KINETIC_WEAPON);
+		if (kineticWeaponComponent != null && !world.isClient()) {
+			kineticWeaponComponent.usageTick(this, remainingUseTicks, user, user.getActiveHand().getEquipmentSlot());
+		} else {
+			this.getItem().usageTick(world, user, this, remainingUseTicks);
+		}
+	}
+
+	public void onItemEntityDestroyed(ItemEntity entity) {
+		this.getItem().onItemEntityDestroyed(entity);
+	}
+
+	public boolean takesDamageFrom(DamageSource source) {
+		DamageResistantComponent damageResistantComponent = this.get(DataComponentTypes.DAMAGE_RESISTANT);
+		return damageResistantComponent == null || !damageResistantComponent.resists(source);
+	}
+
+	public boolean canRepairWith(ItemStack ingredient) {
+		RepairableComponent repairableComponent = this.get(DataComponentTypes.REPAIRABLE);
+		return repairableComponent != null && repairableComponent.matches(ingredient);
+	}
+
+	public boolean canMine(BlockState state, World world, BlockPos pos, PlayerEntity player) {
+		return this.getItem().canMine(this, state, world, pos, player);
+	}
+
+	public DamageSource getDamageSource(LivingEntity attacker, Supplier<DamageSource> fallbackSupplier) {
+		return Optional.ofNullable(this.get(DataComponentTypes.DAMAGE_TYPE))
+			.flatMap(ref -> ref.resolveEntry(attacker.getRegistryManager()))
+			.map(typeEntry -> new DamageSource((RegistryEntry<DamageType>)typeEntry, attacker))
+			.or(() -> Optional.ofNullable(this.getItem().getDamageSource(attacker)))
+			.orElseGet(fallbackSupplier);
+	}
+}
+########## Item.use ##########
+----- net/minecraft/item/Item.java :: public ActionResult use( (line 282) -----
+	public ActionResult use(World world, PlayerEntity user, Hand hand) {
+		ItemStack itemStack = user.getStackInHand(hand);
+		ConsumableComponent consumableComponent = itemStack.get(DataComponentTypes.CONSUMABLE);
+		if (consumableComponent != null) {
+			return consumableComponent.consume(user, itemStack, hand);
+		} else {
+			EquippableComponent equippableComponent = itemStack.get(DataComponentTypes.EQUIPPABLE);
+			if (equippableComponent != null && equippableComponent.swappable()) {
+				return equippableComponent.equip(itemStack, user);
+			} else if (itemStack.contains(DataComponentTypes.BLOCKS_ATTACKS)) {
+				user.setCurrentHand(hand);
+				return ActionResult.CONSUME;
+			} else {
+				KineticWeaponComponent kineticWeaponComponent = itemStack.get(DataComponentTypes.KINETIC_WEAPON);
+				if (kineticWeaponComponent != null) {
+					user.setCurrentHand(hand);
+					kineticWeaponComponent.playSound(user);
+					return ActionResult.CONSUME;
+				} else {
+					return ActionResult.PASS;
+				}
+			}
+		}
+	}
+
+	/**
+	 * Called when an entity finishes using the item, such as eating food or drinking a potion.
+	 * This method handles eating food by default.
+	 * 
+	 * <p>This method is called on both the logical client and logical server, so take caution
+	 * when overriding this method. The logical side can be checked using {@link
+	 * World#isClient}.
+	 * 
+	 * <p>{@code user} might not be a player in some cases. For example, this occurs when a fox
+	 * eats food or when a wandering trader drinks milk.
+	 * 
+	 * @return the new item stack after using the item
+	 */
+	public ItemStack finishUsing(ItemStack stack, World world, LivingEntity user) {
+		ConsumableComponent consumableComponent = stack.get(DataComponentTypes.CONSUMABLE);
+		return consumableComponent != null ? consumableComponent.finishConsumption(world, user, stack) : stack;
+	}
+
+	/**
+	 * {@return whether to show the item bar for {@code stack}}
+	 * 
+	 * <p>Item bar is usually used to display durability of the stack.
+	 * 
+	 * <p>When overriding this, {@link #getItemBarStep} and {@link #getItemBarColor} should
+	 * also be overridden.
+	 */
+	public boolean isItemBarVisible(ItemStack stack) {
+		return stack.isDamaged();
+	}
+
+	/**
+########## Item.java ProjectileItem references ##########
+########## ServerPlayerInteractionManager.useItem ##########
+----- net/minecraft/server/network/ServerPlayerInteractionManager.java :: public ActionResult useItem( NOT FOUND -----
+########## ServerPlayNetworkHandler use-item packet flow ##########
+net/minecraft/server/network/ServerPlayNetworkHandler.java
+----- net/minecraft/server/network/ServerPlayNetworkHandler.java : PlayerInteractItemC2SPacket handling -----
+								} else if (actionResult instanceof ActionResult.Success success && success.swingSource() == ActionResult.SwingSource.SERVER) {
+									this.player.swingHand(hand, true);
+								}
+							}
+						} else {
+							Text text2 = Text.translatable("build.tooHigh", i).formatted(Formatting.RED);
+							this.player.sendMessageToClient(text2, true);
+						}
+
+						this.sendPacket(new BlockUpdateS2CPacket(serverWorld, blockPos));
+						this.sendPacket(new BlockUpdateS2CPacket(serverWorld, blockPos.offset(direction)));
+					} else {
+						LOGGER.warn("Rejecting UseItemOnPacket from {}: Location {} too far away from hit block {}.", this.player.getGameProfile().name(), vec3d, blockPos);
+					}
+				}
+			}
+		}
+	}
+
+	@Override
+	public void onPlayerInteractItem(PlayerInteractItemC2SPacket packet) {
+		NetworkThreadUtils.forceMainThread(packet, this, this.player.getEntityWorld());
+		if (this.canInteractWithGame()) {
+			this.updateSequence(packet.getSequence());
+			ServerWorld serverWorld = this.player.getEntityWorld();
+			Hand hand = packet.getHand();
+			ItemStack itemStack = this.player.getStackInHand(hand);
+			this.player.updateLastActionTime();
+			if (!itemStack.isEmpty() && itemStack.isItemEnabled(serverWorld.getEnabledFeatures())) {
+				float f = MathHelper.wrapDegrees(packet.getYaw());
+				float g = MathHelper.wrapDegrees(packet.getPitch());
+				if (g != this.player.getPitch() || f != this.player.getYaw()) {
+					this.player.setAngles(f, g);
+				}
+
+				if (this.player.interactionManager.interactItem(this.player, serverWorld, itemStack, hand) instanceof ActionResult.Success success
+					&& success.swingSource() == ActionResult.SwingSource.SERVER) {
+					this.player.swingHand(hand, true);
+				}
+			}
+		}
+	}
+
+	@Override
+	public void onSpectatorTeleport(SpectatorTeleportC2SPacket packet) {
+		NetworkThreadUtils.forceMainThread(packet, this, this.player.getEntityWorld());
+		if (this.player.isSpectator()) {
+			for (ServerWorld serverWorld : this.server.getWorlds()) {
+				Entity entity = packet.getTarget(serverWorld);
+				if (entity != null) {
+					this.player.teleport(serverWorld, entity.getX(), entity.getY(), entity.getZ(), Set.of(), entity.getYaw(), entity.getPitch(), true);
+					return;
+				}
+			}
+		}
+	}
+
+	@Override
+	public void onBoatPaddleState(BoatPaddleStateC2SPacket packet) {
+		NetworkThreadUtils.forceMainThread(packet, this, this.player.getEntityWorld());
+		if (this.player.getControllingVehicle() instanceof AbstractBoatEntity abstractBoatEntity) {
+			abstractBoatEntity.setPaddlesMoving(packet.isLeftPaddling(), packet.isRightPaddling());
+		}
+	}
+
+	@Override
+	public void onDisconnected(DisconnectionInfo info) {
+		LOGGER.info("{} lost connection: {}", this.player.getStringifiedName(), info.reason().getString());
+		this.cleanUp();
+		super.onDisconnected(info);
+	}
+
+	private void cleanUp() {
+		this.messageChainTaskQueue.close();
+		this.server.forcePlayerSampleUpdate();
+		this.server.getPlayerManager().broadcast(Text.translatable("multiplayer.player.left", this.player.getDisplayName()).formatted(Formatting.YELLOW), false);
+		this.player.onDisconnect();
+		this.server.getPlayerManager().remove(this.player);
+		this.player.getTextStream().onDisconnect();
+	}
+
+	public void updateSequence(int sequence) {
+		if (sequence < 0) {
+			throw new IllegalArgumentException("Expected packet sequence nr >= 0");
+		}
+
+		this.sequence = Math.max(sequence, this.sequence);
+	}
+
+	@Override
+	public void onUpdateSelectedSlot(UpdateSelectedSlotC2SPacket packet) {
+		NetworkThreadUtils.forceMainThread(packet, this, this.player.getEntityWorld());
+		if (packet.getSelectedSlot() >= 0 && packet.getSelectedSlot() < PlayerInventory.getHotbarSize()) {
+			if (this.player.getInventory().getSelectedSlot() != packet.getSelectedSlot() && this.player.getActiveHand() == Hand.MAIN_HAND) {
+				this.player.clearActiveItem();
+			}
+
+			this.player.getInventory().setSelectedSlot(packet.getSelectedSlot());
+			this.player.updateLastActionTime();
+		} else {
+			LOGGER.warn("{} tried to set an invalid carried item", this.player.getStringifiedName());
+		}
+	}
+
+	@Override
+	public void onChatMessage(ChatMessageC2SPacket packet) {
+		Optional<LastSeenMessageList> optional = this.validateAcknowledgment(packet.acknowledgment());
+		if (!optional.isEmpty()) {
+			this.validateMessage(packet.chatMessage(), false, () -> {
+				SignedMessage signedMessage;
+				try {
+					signedMessage = this.getSignedMessage(packet, optional.get());
+				} catch (MessageChain.MessageChainException messageChainException) {
+					this.handleMessageChainException(messageChainException);
+					return;
+				}
+
+				CompletableFuture<FilteredMessage> completableFuture = this.filterText(signedMessage.getSignedContent());
+				Text text = this.server.getMessageDecorator().decorate(this.player, signedMessage.getContent());
+				this.messageChainTaskQueue.append(completableFuture, filtered -> {
+					SignedMessage signedMessage2 = signedMessage.withUnsignedContent(text).withFilterMask(filtered.mask());
+########## XP sync packet senders ##########
+net/minecraft/server/network/ServerPlayerEntity.java:104:import net.minecraft.network.packet.s2c.play.ExperienceBarUpdateS2CPacket;
+net/minecraft/server/network/ServerPlayerEntity.java:714:				this.networkHandler.sendPacket(new ExperienceBarUpdateS2CPacket(this.experienceProgress, this.totalExperience, this.experienceLevel));
+net/minecraft/server/PlayerManager.java:46:import net.minecraft.network.packet.s2c.play.ExperienceBarUpdateS2CPacket;
+net/minecraft/server/PlayerManager.java:417:			.sendPacket(new ExperienceBarUpdateS2CPacket(serverPlayerEntity.experienceProgress, serverPlayerEntity.totalExperience, serverPlayerEntity.experienceLevel));
+########## ServerPlayerInteractionManager.interactItem ##########
+----- net/minecraft/server/network/ServerPlayerInteractionManager.java :: public ActionResult interactItem( (line 304) -----
+	public ActionResult interactItem(ServerPlayerEntity player, World world, ItemStack stack, Hand hand) {
+		if (this.gameMode == GameMode.SPECTATOR) {
+			return ActionResult.PASS;
+		}
+
+		if (player.getItemCooldownManager().isCoolingDown(stack)) {
+			return ActionResult.PASS;
+		}
+
+		int i = stack.getCount();
+		int j = stack.getDamage();
+		ActionResult actionResult = stack.use(world, player, hand);
+		ItemStack itemStack;
+		if (actionResult instanceof ActionResult.Success success) {
+			itemStack = Objects.requireNonNullElse(success.getNewHandStack(), player.getStackInHand(hand));
+		} else {
+			itemStack = player.getStackInHand(hand);
+		}
+
+		if (itemStack == stack && itemStack.getCount() == i && itemStack.getMaxUseTime(player) <= 0 && itemStack.getDamage() == j) {
+			return actionResult;
+		}
+
+		if (actionResult instanceof ActionResult.Fail && itemStack.getMaxUseTime(player) > 0 && !player.isUsingItem()) {
+			return actionResult;
+		}
+
+		if (stack != itemStack) {
+			player.setStackInHand(hand, itemStack);
+		}
+
+		if (itemStack.isEmpty()) {
+			player.setStackInHand(hand, ItemStack.EMPTY);
+		}
+
+		if (!player.isUsingItem()) {
+			player.playerScreenHandler.syncState();
+		}
+
+		return actionResult;
+	}
+
+	public ActionResult interactBlock(ServerPlayerEntity player, World world, ItemStack stack, Hand hand, BlockHitResult hitResult) {
+		BlockPos blockPos = hitResult.getBlockPos();
+		BlockState blockState = world.getBlockState(blockPos);
+		if (!blockState.getBlock().isEnabled(world.getEnabledFeatures())) {
+			return ActionResult.FAIL;
+		}
+
+		if (this.gameMode == GameMode.SPECTATOR) {
+			NamedScreenHandlerFactory namedScreenHandlerFactory = blockState.createScreenHandlerFactory(world, blockPos);
+			if (namedScreenHandlerFactory != null) {
+				player.openHandledScreen(namedScreenHandlerFactory);
+				return ActionResult.CONSUME;
+			} else {
+				return ActionResult.PASS;
+########## ServerPlayerEntity XP packet context (lines 695-725) ##########
+			}
+
+			if (this.getArmor() != this.lastArmorScore) {
+				this.lastArmorScore = this.getArmor();
+				this.updateScores(ScoreboardCriterion.ARMOR, MathHelper.ceil(this.lastArmorScore));
+			}
+
+			if (this.totalExperience != this.lastExperienceScore) {
+				this.lastExperienceScore = this.totalExperience;
+				this.updateScores(ScoreboardCriterion.XP, MathHelper.ceil(this.lastExperienceScore));
+			}
+
+			if (this.experienceLevel != this.lastLevelScore) {
+				this.lastLevelScore = this.experienceLevel;
+				this.updateScores(ScoreboardCriterion.LEVEL, MathHelper.ceil(this.lastLevelScore));
+			}
+
+			if (this.totalExperience != this.syncedExperience) {
+				this.syncedExperience = this.totalExperience;
+				this.networkHandler.sendPacket(new ExperienceBarUpdateS2CPacket(this.experienceProgress, this.totalExperience, this.experienceLevel));
+			}
+
+			if (this.age % 20 == 0) {
+				Criteria.LOCATION.trigger(this);
+			}
+		} catch (Throwable throwable) {
+			CrashReport crashReport = CrashReport.create(throwable, "Ticking player");
+			CrashReportSection crashReportSection = crashReport.addElement("Player being ticked");
+			this.populateCrashReport(crashReportSection);
+			throw new CrashException(crashReport);
+		}
+########## ScreenHandler.sendContentUpdates ##########
+----- net/minecraft/screen/ScreenHandler.java :: public void sendContentUpdates( (line 409) -----
+	public void sendContentUpdates() {
+		for (int i = 0; i < this.slots.size(); i++) {
+			ItemStack itemStack = this.slots.get(i).getStack();
+			Supplier<ItemStack> supplier = Suppliers.memoize(itemStack::copy);
+			this.updateTrackedSlot(i, itemStack, supplier);
+			this.checkSlotUpdates(i, itemStack, supplier);
+		}
+
+		this.checkCursorStackUpdates();
+
+		for (int i = 0; i < this.properties.size(); i++) {
+			Property property = this.properties.get(i);
+			int j = property.get();
+			if (property.hasChanged()) {
+				this.notifyPropertyUpdate(i, j);
+			}
+
+			this.checkPropertyUpdates(i, j);
+		}
+	}
+
+	public void updateToClient() {
+		for (int i = 0; i < this.slots.size(); i++) {
+			ItemStack itemStack = this.slots.get(i).getStack();
+			this.updateTrackedSlot(i, itemStack, itemStack::copy);
+		}
+
+		for (int i = 0; i < this.properties.size(); i++) {
+			Property property = this.properties.get(i);
+			if (property.hasChanged()) {
+				this.notifyPropertyUpdate(i, property.get());
+			}
+		}
+
+		this.syncState();
+	}
+
+	private void notifyPropertyUpdate(int index, int value) {
+		for (ScreenHandlerListener screenHandlerListener : this.listeners) {
+			screenHandlerListener.onPropertyUpdate(this, index, value);
+		}
+	}
+
+	private void updateTrackedSlot(int slot, ItemStack stack, Supplier<ItemStack> copySupplier) {
+		ItemStack itemStack = this.trackedStacks.get(slot);
+		if (!ItemStack.areEqual(itemStack, stack)) {
+			ItemStack itemStack2 = copySupplier.get();
+			this.trackedStacks.set(slot, itemStack2);
+
+			for (ScreenHandlerListener screenHandlerListener : this.listeners) {
+				screenHandlerListener.onSlotUpdate(this, slot, itemStack2);
+			}
+		}
+	}
+
+	private void checkSlotUpdates(int slot, ItemStack stack, Supplier<ItemStack> copySupplier) {
+########## ClientPlayerInteractionManager use flow ##########
+368:				actionResult3 = itemStack.useOnBlock(itemUsageContext);
+371:				actionResult3 = itemStack.useOnBlock(itemUsageContext);
+395:			ActionResult actionResult = itemStack.use(this.client.world, player, hand);
+			} else {
+				actionResult3 = itemStack.useOnBlock(itemUsageContext);
+			}
+
+			return actionResult3;
+		} else {
+			return ActionResult.PASS;
+		}
+	}
+
+	public ActionResult interactItem(PlayerEntity player, Hand hand) {
+		if (this.gameMode == GameMode.SPECTATOR) {
+			return ActionResult.PASS;
+		}
+
+		this.syncSelectedSlot();
+		MutableObject<ActionResult> mutableObject = new MutableObject<>();
+		this.sendSequencedPacket(this.client.world, sequence -> {
+			PlayerInteractItemC2SPacket playerInteractItemC2SPacket = new PlayerInteractItemC2SPacket(hand, sequence, player.getYaw(), player.getPitch());
+			ItemStack itemStack = player.getStackInHand(hand);
+			if (player.getItemCooldownManager().isCoolingDown(itemStack)) {
+				mutableObject.setValue(ActionResult.PASS);
+				return playerInteractItemC2SPacket;
+			}
+
+			ActionResult actionResult = itemStack.use(this.client.world, player, hand);
+			ItemStack itemStack2;
+			if (actionResult instanceof ActionResult.Success success) {
+				itemStack2 = Objects.requireNonNullElseGet(success.getNewHandStack(), () -> player.getStackInHand(hand));
+			} else {
+				itemStack2 = player.getStackInHand(hand);
+			}
+
+			if (itemStack2 != itemStack) {
+				player.setStackInHand(hand, itemStack2);
+			}
+
+			mutableObject.setValue(actionResult);
+			return playerInteractItemC2SPacket;
+		});
+		return mutableObject.get();
+	}
+
+	public ClientPlayerEntity createPlayer(ClientWorld world, StatHandler statHandler, ClientRecipeBook recipeBook) {
+		return this.createPlayer(world, statHandler, recipeBook, PlayerInput.DEFAULT, false);
+	}
+
+	public ClientPlayerEntity createPlayer(
+		ClientWorld world, StatHandler statHandler, ClientRecipeBook recipeBook, PlayerInput lastPlayerInput, boolean lastSprinting
+	) {
+		return new ClientPlayerEntity(this.client, world, this.networkHandler, statHandler, recipeBook, lastPlayerInput, lastSprinting);
+	}
+
+	public void attackEntity(PlayerEntity player, Entity target) {
+		this.syncSelectedSlot();
+		this.networkHandler.sendPacket(PlayerInteractEntityC2SPacket.attack(target, player.isSneaking()));
+		if (this.gameMode != GameMode.SPECTATOR) {
+			player.attack(target);
+			player.resetTicksSince();
+		}
+	}
+
+	public ActionResult interactEntity(PlayerEntity player, Entity entity, Hand hand) {
+		this.syncSelectedSlot();
+		this.networkHandler.sendPacket(PlayerInteractEntityC2SPacket.interact(entity, player.isSneaking(), hand));
+		return this.gameMode == GameMode.SPECTATOR ? ActionResult.PASS : player.interact(entity, hand);
+	}
+
+	public ActionResult interactEntityAtLocation(PlayerEntity player, Entity entity, EntityHitResult hitResult, Hand hand) {
+		this.syncSelectedSlot();
+		Vec3d vec3d = hitResult.getPos().subtract(entity.getX(), entity.getY(), entity.getZ());
+########## PlayerEntity.addExperience ##########
+----- net/minecraft/entity/player/PlayerEntity.java :: public void addExperience( (line 1597) -----
+	public void addExperience(int experience) {
+		this.addScore(experience);
+		this.experienceProgress = this.experienceProgress + (float)experience / this.getNextLevelExperience();
+		this.totalExperience = MathHelper.clamp(this.totalExperience + experience, 0, Integer.MAX_VALUE);
+
+		while (this.experienceProgress < 0.0F) {
+			float f = this.experienceProgress * this.getNextLevelExperience();
+			if (this.experienceLevel > 0) {
+				this.addExperienceLevels(-1);
+				this.experienceProgress = 1.0F + f / this.getNextLevelExperience();
+			} else {
+				this.addExperienceLevels(-1);
+				this.experienceProgress = 0.0F;
+			}
+		}
+
+		while (this.experienceProgress >= 1.0F) {
+			this.experienceProgress = (this.experienceProgress - 1.0F) * this.getNextLevelExperience();
+			this.addExperienceLevels(1);
+			this.experienceProgress = this.experienceProgress / this.getNextLevelExperience();
+		}
+	}
+
+	public int getEnchantingTableSeed() {
+		return this.enchantingTableSeed;
+	}
+
+	public void applyEnchantmentCosts(ItemStack enchantedItem, int experienceLevels) {
+		this.experienceLevel -= experienceLevels;
+		if (this.experienceLevel < 0) {
+			this.experienceLevel = 0;
+			this.experienceProgress = 0.0F;
+			this.totalExperience = 0;
+		}
+
+		this.enchantingTableSeed = this.random.nextInt();
+	}
+
+	public void addExperienceLevels(int levels) {
+		this.experienceLevel = IntMath.saturatedAdd(this.experienceLevel, levels);
+		if (this.experienceLevel < 0) {
+			this.experienceLevel = 0;
+			this.experienceProgress = 0.0F;
+			this.totalExperience = 0;
+		}
+
+		if (levels > 0 && this.experienceLevel % 5 == 0 && this.lastPlayedLevelUpSoundTime < this.age - 100.0F) {
+			float f = this.experienceLevel > 30 ? 1.0F : this.experienceLevel / 30.0F;
+			this.getEntityWorld().playSound(null, this.getX(), this.getY(), this.getZ(), SoundEvents.ENTITY_PLAYER_LEVELUP, this.getSoundCategory(), f * 0.75F, 1.0F);
+			this.lastPlayedLevelUpSoundTime = this.age;
+		}
+	}
+
+	public int getNextLevelExperience() {
+		if (this.experienceLevel >= 30) {
+			return 112 + (this.experienceLevel - 30) * 9;
+########## ExperienceOrbEntity.spawn / nextInt ##########
+----- net/minecraft/entity/ExperienceOrbEntity.java :: public static void spawn( (line 191) -----
+	public static void spawn(ServerWorld world, Vec3d pos, int amount) {
+		spawn(world, pos, Vec3d.ZERO, amount);
+	}
+
+	public static void spawn(ServerWorld world, Vec3d pos, Vec3d velocity, int amount) {
+		while (amount > 0) {
+			int i = roundToOrbSize(amount);
+			amount -= i;
+			if (!wasMergedIntoExistingOrb(world, pos, i)) {
+				world.spawnEntity(new ExperienceOrbEntity(world, pos, velocity, i));
+			}
+		}
+	}
+
+	private static boolean wasMergedIntoExistingOrb(ServerWorld world, Vec3d pos, int amount) {
+		Box box = Box.of(pos, 1.0, 1.0, 1.0);
+		int i = world.getRandom().nextInt(40);
+		List<ExperienceOrbEntity> list = world.getEntitiesByType(TypeFilter.instanceOf(ExperienceOrbEntity.class), box, orb -> isMergeable(orb, i, amount));
+		if (!list.isEmpty()) {
+			ExperienceOrbEntity experienceOrbEntity = list.get(0);
+			experienceOrbEntity.pickingCount++;
+			experienceOrbEntity.orbAge = 0;
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	private boolean isMergeable(ExperienceOrbEntity other) {
+		return other != this && isMergeable(other, this.getId(), this.getValue());
+	}
+
+	private static boolean isMergeable(ExperienceOrbEntity orb, int seed, int amount) {
+		return !orb.isRemoved() && (orb.getId() - seed) % 40 == 0 && orb.getValue() == amount;
+	}
+
+	private void merge(ExperienceOrbEntity other) {
+		this.pickingCount = this.pickingCount + other.pickingCount;
+		this.orbAge = Math.min(this.orbAge, other.orbAge);
+		other.discard();
+	}
+
+	private void applyWaterMovement() {
+		Vec3d vec3d = this.getVelocity();
+		this.setVelocity(vec3d.x * 0.99F, Math.min(vec3d.y + 5.0E-4F, 0.06F), vec3d.z * 0.99F);
+	}
+
+	@Override
+	protected void onSwimmingStart() {
+	}
+
+	@Override
+	public final boolean clientDamage(DamageSource source) {
+		return !this.isAlwaysInvulnerableTo(source);
+	}
+
+207:		int i = world.getRandom().nextInt(40);
+########## who handles ProjectileItem ##########
+net/minecraft/entity/OminousItemSpawnerEntity.java:76:				if (itemStack.getItem() instanceof ProjectileItem projectileItem) {
+net/minecraft/block/dispenser/ProjectileDispenserBehavior.java:21:		if (item instanceof ProjectileItem projectileItem) {
+net/minecraft/entity/OminousItemSpawnerEntity.java
+net/minecraft/item/WindChargeItem.java
+net/minecraft/item/ThrowablePotionItem.java
+net/minecraft/item/FireworkRocketItem.java
+net/minecraft/item/FireChargeItem.java
+########## SoundEvents EXPERIENCE fields ##########
+602:	public static final SoundEvent ENTITY_EXPERIENCE_BOTTLE_THROW = register("entity.experience_bottle.throw");
+603:	public static final SoundEvent ENTITY_EXPERIENCE_ORB_PICKUP = register("entity.experience_orb.pickup");
+########## Items.EXPERIENCE_BOTTLE ##########
+1661:	public static final Item EXPERIENCE_BOTTLE = register(
+########## ParticleTypes experience/enchant fields ##########
+42:	public static final SimpleParticleType ENCHANTED_HIT = register("enchanted_hit", false);
+43:	public static final SimpleParticleType ENCHANT = register("enchant", false);
+########## WorldEvents SPLASH ##########
+353:	 * <p>For instant effects such as Instant Health and Instant Damage, use {@link #INSTANT_SPLASH_POTION_SPLASHED}.
+357:	public static final int SPLASH_POTION_SPLASHED = 2002;
+380:	 * <p>For non-instant effects, use {@link #SPLASH_POTION_SPLASHED}.
+########## Stats.USED ##########
+12:	public static final StatType<Block> MINED = registerType("mined", Registries.BLOCK);
+13:	public static final StatType<Item> CRAFTED = registerType("crafted", Registries.ITEM);
+14:	public static final StatType<Item> USED = registerType("used", Registries.ITEM);
+15:	public static final StatType<Item> BROKEN = registerType("broken", Registries.ITEM);
+16:	public static final StatType<Item> PICKED_UP = registerType("picked_up", Registries.ITEM);
+17:	public static final StatType<Item> DROPPED = registerType("dropped", Registries.ITEM);
+18:	public static final StatType<EntityType<?>> KILLED = registerType("killed", Registries.ENTITY_TYPE);
+19:	public static final StatType<EntityType<?>> KILLED_BY = registerType("killed_by", Registries.ENTITY_TYPE);
+20:	public static final StatType<Identifier> CUSTOM = registerType("custom", Registries.CUSTOM_STAT);
+21:	public static final Identifier LEAVE_GAME = register("leave_game", StatFormatter.DEFAULT);
+22:	public static final Identifier PLAY_TIME = register("play_time", StatFormatter.TIME);
+23:	public static final Identifier TOTAL_WORLD_TIME = register("total_world_time", StatFormatter.TIME);
+24:	public static final Identifier TIME_SINCE_DEATH = register("time_since_death", StatFormatter.TIME);
+25:	public static final Identifier TIME_SINCE_REST = register("time_since_rest", StatFormatter.TIME);
+26:	public static final Identifier SNEAK_TIME = register("sneak_time", StatFormatter.TIME);
+27:	public static final Identifier WALK_ONE_CM = register("walk_one_cm", StatFormatter.DISTANCE);
+28:	public static final Identifier CROUCH_ONE_CM = register("crouch_one_cm", StatFormatter.DISTANCE);
+29:	public static final Identifier SPRINT_ONE_CM = register("sprint_one_cm", StatFormatter.DISTANCE);
+30:	public static final Identifier WALK_ON_WATER_ONE_CM = register("walk_on_water_one_cm", StatFormatter.DISTANCE);
+31:	public static final Identifier FALL_ONE_CM = register("fall_one_cm", StatFormatter.DISTANCE);
+32:	public static final Identifier CLIMB_ONE_CM = register("climb_one_cm", StatFormatter.DISTANCE);
+33:	public static final Identifier FLY_ONE_CM = register("fly_one_cm", StatFormatter.DISTANCE);
+34:	public static final Identifier WALK_UNDER_WATER_ONE_CM = register("walk_under_water_one_cm", StatFormatter.DISTANCE);
+35:	public static final Identifier MINECART_ONE_CM = register("minecart_one_cm", StatFormatter.DISTANCE);
+36:	public static final Identifier BOAT_ONE_CM = register("boat_one_cm", StatFormatter.DISTANCE);
