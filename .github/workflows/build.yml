@@ -77,8 +77,14 @@ jobs:
             echo "########## ServerPlayerInteractionManager.useItem ##########"
             dump_method net/minecraft/server/network/ServerPlayerInteractionManager.java "public ActionResult useItem("
             echo "########## ServerPlayNetworkHandler use-item packet flow ##########"
-            grep -n "useItem" net/minecraft/server/network/ServerPlayNetworkHandler.java 2>/dev/null | head -n 5
-            dump_method net/minecraft/server/network/ServerPlayNetworkHandler.java "public void onPlayerInteractItem("
+            grep -rln "PlayerInteractItemC2SPacket" net/minecraft/server --include="*.java" 2>/dev/null | head -n 5
+            for f in $(grep -rln "PlayerInteractItemC2SPacket" net/minecraft/server --include="*.java" 2>/dev/null | head -n 3); do
+              echo "----- $f : PlayerInteractItemC2SPacket handling -----"
+              line=$(grep -nF "PlayerInteractItemC2SPacket packet" "$f" | head -n 1 | cut -d: -f1)
+              if [ -n "$line" ]; then sed -n "$((line > 20 ? line - 20 : 1)),$((line + 100))p" "$f"; else grep -n "PlayerInteractItemC2SPacket" "$f" | head -n 10; fi
+            done
+            echo "########## XP sync packet senders ##########"
+            grep -rn "ExperienceBarUpdateS2CPacket" net/minecraft/server --include="*.java" 2>/dev/null | head -n 8
             echo "########## ClientPlayerInteractionManager use flow ##########"
             grep -n "itemStack.use" net/minecraft/client/network/ClientPlayerInteractionManager.java 2>/dev/null | head -n 5
             sed -n '370,440p' net/minecraft/client/network/ClientPlayerInteractionManager.java 2>/dev/null

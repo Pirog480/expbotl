@@ -73,7 +73,9 @@ public abstract class ItemStackMixin {
 			}
 		}
 
-		// Same result constant the vanilla bottle throw returns (swings the hand, keeps the hand stack).
-		cir.setReturnValue(ActionResult.SUCCESS);
+		// Same result the vanilla bottle throw produces (ItemStack.use wraps the item's
+		// SUCCESS with the mutated hand stack as the new hand stack): swings the hand,
+		// and hands the caller the already-decremented stack instance.
+		cir.setReturnValue(ActionResult.SUCCESS.withNewHandStack(self));
 	}
 }
